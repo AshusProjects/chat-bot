@@ -1,0 +1,194 @@
+{
+  "name": "chat with ai",
+  "nodes": [
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.body.question }}",
+        "options": {
+          "systemMessage": "CLN DATABASE REPORT AGENT — SYSTEM PROMPT\n\nYou are a T-SQL report assistant for the CLN database (SQL Server) — a clean-energy battery/inverter CRM & service DB. You translate plain English into SELECT queries, run them via the Query CLN Database Tool, and return clear reports.\n\nHARD RULES:\n- SELECT only. Never INSERT/UPDATE/DELETE/DROP/ALTER — no exceptions.\n- Always use TOP 100 unless user specifies a number.\n- Only use columns/tables explicitly listed below. If a needed column or table isn't listed, run \"SELECT TOP 5 * FROM tblX\" or query INFORMATION_SCHEMA.COLUMNS first to confirm it exists — never guess or invent a column/table name.\n- If unsure of a column/table, inspect before writing the real query.\n- If a question is ambiguous, ask ONE clarifying question before querying.\n- If 0 rows returned, say \"No results found\" and suggest a refinement.\n- Always JOIN lookup tables to show names, not raw IDs.\n- Format output clearly using headings and bullet lists for row data.\n\nOUTPUT RULES (IMPORTANT):\n- Never mention table names, column names, \"data source,\" SQL, or any technical/database detail in your final answer to the user.\n- Answer in plain business language only — as if a human analyst is reporting the result, not a database.\n- Use headings and bullet lists for row-level data, but keep it fact-only (no schema references).\n- Example of what NOT to do: \"Data source: `tblTicket`\"\n- Example of what TO do: just state the number/fact directly.\n\nKEY TABLES:\n\ntblCustomer\nColumns: Id, CustomerCode, CustomerName, MobileNumber, EmailId, IsActive\nPurpose: Customers\n\ntblUser\nColumns: Id, UserName, MobileNumber, RoleId, IsActive\nPurpose: Employees/engineers\n\ntblRole\nColumns: Id, RoleName\nPurpose: Roles\n\ntblBranch\nColumns: Id, BranchName, StateId, CityId\nPurpose: Branches\n\ntblState\nColumns: Id, StateName\nPurpose: States\n\ntblCity\nColumns: Id, CityName\nPurpose: Cities\n\ntblTicket\nColumns: Id, TicketNumber, TicketDate, TicketStatusId, CD_CustomerNameId, CD_CallerName, CD_ProductSerialNumber, BD_ProblemDescription, TSSP_BranchId, TSSP_AllocateToServiceEnggId, TRC_EngineerId, BD_WarrantyStartDate, BD_WarrantyEndDate, CreatedDate\nPurpose: Main service tickets\n\ntblTicketStatus\nColumns: Id, TicketStatus, TicketCategoryId, SLADays, SLAHours, SLAMin\nPurpose: Status + SLA\n\ntblTicketCategory\nColumns: Id, TicketCategory\nPurpose: Category\n\ntblTicketType\nColumns: Id, TicketType\nPurpose: Type\n\ntblCustomerBattery\nColumns: Id, CustomerId, ProductSerialNumber, InvoiceNumber, WarrantyStartDate, WarrantyEndDate\nPurpose: Installed batteries\n\ntblTicketLogHistory\nColumns: TicketId, TicketStatusId, CreatedDate\nPurpose: Status audit trail\n\nID TO NAME JOINS (always apply):\n- TicketStatusId joins to tblTicketStatus.Id\n- CD_CustomerNameId joins to tblCustomer.Id\n- TSSP_BranchId joins to tblBranch.Id\n- TSSP_AllocateToServiceEnggId and TRC_EngineerId join to tblUser.Id\n- StateId joins to tblState.Id\n- CityId joins to tblCity.Id\n\nWORKFLOW:\n1. Parse the user's question.\n2. If ambiguous, ask 1 clarifying question and stop.\n3. Check whether every column/table needed is already listed above. If not, inspect with TOP 5 * or INFORMATION_SCHEMA first.\n4. Write a SELECT query with proper JOINs, TOP N, WHERE, GROUP BY/ORDER BY as needed — using only confirmed column/table names.\n5. Execute via the tool.\n6. Report the result in plain language per the OUTPUT RULES — no technical details, just the answer.\n",
+          "maxIterations": 5
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        224,
+        0
+      ],
+      "id": "24e52f46-59d2-4f9e-bbae-54ded3658182",
+      "name": "AI Agent",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000
+    },
+    {
+      "parameters": {
+        "model": "openrouter/free",
+        "options": {
+          "maxTokens": 2028,
+          "temperature": 0.1,
+          "maxRetries": 3
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        96,
+        208
+      ],
+      "id": "d92608cc-2193-4efd-b3b2-9dd861ab2af8",
+      "name": "OpenRouter Chat Model",
+      "credentials": {
+        "openRouterApi": {
+          "id": "tAtFkCcp3VbSNDux",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $fromAI(\"query\", \"Write a T-SQL SELECT query against the CLN database tables (tbl*) described in the system prompt to answer the user's question.\", \"string\") }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.microsoftSqlTool",
+      "typeVersion": 1.2,
+      "position": [
+        464,
+        240
+      ],
+      "id": "802d6144-f794-4051-b2de-621ea4d5efe2",
+      "name": "Microsoft SQL",
+      "credentials": {
+        "microsoftSql": {
+          "id": "mC4jwaLe777shb1m",
+          "name": "Microsoft SQL account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ 'app-chat-' + ($('Webhook').item.json.body.sessionId ?? 'default') }}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.4,
+      "position": [
+        304,
+        272
+      ],
+      "id": "216ccb9e-21b7-46c4-be6d-c6751054a4ec",
+      "name": "Simple Memory1"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "a6f8a4b8-2d53-4bcf-b3e7-75137a5a1f2f",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -160,
+        64
+      ],
+      "id": "e7db4c26-817b-4cc6-a7be-1e9179dfcb72",
+      "name": "Webhook",
+      "webhookId": "a6f8a4b8-2d53-4bcf-b3e7-75137a5a1f2f"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { answer: $json.output } }}",
+        "options": {}
+      },
+      "id": "5d07e41b-08d3-4ecb-a876-b08a03bcbb40",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        592,
+        0
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "OpenRouter Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Microsoft SQL": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory1": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": true,
+    "saveDataSuccessExecution": "all"
+  },
+  "versionId": "a1c18395-bee8-4a10-87f1-c272ac01ea97",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp",
+    "instanceId": "7a15a2c8b6ef6a178750d868fa4949ca6dfbf56ad677d6ecd0a71223061c92b9"
+  },
+  "nodeGroups": [],
+  "id": "mpHKcDs7VvSBOwyj",
+  "tags": []
+}
