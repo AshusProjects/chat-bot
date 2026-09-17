@@ -14,7 +14,6 @@ FastAPI backend that forwards user questions to an n8n workflow and returns the 
 
 ```
 main.py           FastAPI app: chat/health endpoints, auth, n8n forwarding
-n8n.py            (placeholder)
 requirements.txt  Python dependencies
 .env              Configuration (API_KEY, N8N_WEBHOOK_URL)
 ```
